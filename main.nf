@@ -31,7 +31,7 @@ workflow {
  */
 process ANALYZE_WITH_TEMPLATE {
     tag "$sample_id"
-    container 'python:3.11-slim'
+    container 'python:3.11'
 
     input:
     tuple val(sample_id), val(sequence)
