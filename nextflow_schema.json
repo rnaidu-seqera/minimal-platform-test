@@ -11,12 +11,12 @@
             "properties": {
                 "greeting": {
                     "type": "string",
-                    "default": "Hello",
+                    "default": "HiThisisATest",
                     "description": "Greeting word"
                 },
                 "name": {
                     "type": "string",
-                    "default": "World",
+                    "default": "WorldThisisATest",
                     "description": "Name to greet"
                 }
             }
