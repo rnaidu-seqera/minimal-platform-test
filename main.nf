@@ -6,6 +6,7 @@
 params.sample = "sample1"
 
 process MAKE_REPORT {
+    container 'ubuntu:24.04'
     publishDir "${params.outdir}/reports", mode: 'copy'
 
     output:
