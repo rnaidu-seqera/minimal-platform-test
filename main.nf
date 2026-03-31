@@ -15,19 +15,14 @@ process MAKE_REPORT {
 
     script:
     """
-    cat << 'EOF' > report.html
-    <!DOCTYPE html>
-    <html>
-    <head><title>Pipeline Report</title></head>
-    <body>
-      <h1>Pipeline Report</h1>
-      <p>Sample: ${params.sample}</p>
-      <p>Status: complete</p>
-    </body>
-    </html>
-    EOF
+    echo '<!DOCTYPE html>'                          >  report.html
+    echo '<html><head><title>Pipeline Report</title></head><body>' >> report.html
+    echo '<h1>Pipeline Report</h1>'                >> report.html
+    echo '<p>Sample: ${params.sample}</p>'         >> report.html
+    echo '<p>Status: complete</p></body></html>'   >> report.html
 
-    printf 'sample,status\n${params.sample},complete\n' > summary.csv
+    echo 'sample,status'                           >  summary.csv
+    echo '${params.sample},complete'               >> summary.csv
     """
 }
 
