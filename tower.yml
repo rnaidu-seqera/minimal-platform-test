@@ -1,5 +1,6 @@
 reports:
   'results/reports/report.html':
     display: "HTML Report"
+    mimeType: "text/html"
   'results/reports/summary.csv':
     display: "Summary CSV"
