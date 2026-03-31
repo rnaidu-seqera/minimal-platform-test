@@ -1,0 +1,5 @@
+reports:
+  'results/reports/report.html':
+    display: "HTML Report"
+  'results/reports/summary.csv':
+    display: "Summary CSV"
