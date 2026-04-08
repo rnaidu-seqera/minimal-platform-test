@@ -26,14 +26,19 @@ process MAKE_REPORT {
 }
 
 workflow {
+    main:
     MAKE_REPORT()
 
     publish:
-    MAKE_REPORT.out.html >> 'reports'
-    MAKE_REPORT.out.csv  >> 'reports'
+    html = MAKE_REPORT.out.html
+    csv  = MAKE_REPORT.out.csv
 }
 
 output {
-    directory params.outdir
-    mode 'copy'
+    html {
+        path 'reports'
+    }
+    csv {
+        path 'reports'
+    }
 }
