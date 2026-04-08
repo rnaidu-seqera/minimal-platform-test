@@ -1,13 +1,12 @@
 #!/usr/bin/env nextflow
 
-// FD-7399 — Scenario A: publishDir (old syntax, expected baseline)
-// Files should appear in Seqera Platform Reports tab via tower.yml
+// FD-7399 — Scenario B: new workflow output syntax
+// Tests whether tower.yml reports still appear when using output {} instead of publishDir
 
 params.sample = "sample1"
 
 process MAKE_REPORT {
     container 'ubuntu:24.04'
-    publishDir "${params.outdir}/reports", mode: 'copy'
 
     output:
     path "report.html", emit: html
@@ -28,4 +27,13 @@ process MAKE_REPORT {
 
 workflow {
     MAKE_REPORT()
+
+    publish:
+    MAKE_REPORT.out.html >> 'reports'
+    MAKE_REPORT.out.csv  >> 'reports'
+}
+
+output {
+    directory params.outdir
+    mode 'copy'
 }
