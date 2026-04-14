@@ -1,21 +1,15 @@
 #!/usr/bin/env nextflow
 
-params.greeting = "Hello"
-params.name     = "World"
-
 process SAY_HELLO {
-    debug true
-
-    input:
-    val greeting
-    val name
+    output:
+    path 'greeting.txt'
 
     script:
     """
-    echo "${greeting}, ${name}!"
+    echo "${params.greeting}, ${params.name}!" > greeting.txt
     """
 }
 
 workflow {
-    SAY_HELLO(params.greeting, params.name)
+    SAY_HELLO()
 }
