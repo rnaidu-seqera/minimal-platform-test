@@ -18,6 +18,12 @@
                     "type": "string",
                     "default": "Universe",
                     "description": "Name to greet"
+                },
+                "results_prefix": {
+                    "type": "string",
+                    "default": "bioinformatics-results",
+                    "description": "Prefix for results output (hidden: false set explicitly — FD-7451)",
+                    "hidden": false
                 }
             }
         }

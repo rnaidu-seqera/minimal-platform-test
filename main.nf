@@ -1,9 +1,11 @@
 #!/usr/bin/env nextflow
 
-params.greeting = "Hello"
-params.name     = "World"
+params.greeting       = "Hello"
+params.name           = "World"
+params.results_prefix = "bioinformatics-results"
 
 process SAY_HELLO {
+    container 'ubuntu:22.04'
     debug true
 
     input:
