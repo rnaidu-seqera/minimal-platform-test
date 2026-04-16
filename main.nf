@@ -1,6 +1,8 @@
 #!/usr/bin/env nextflow
 
 process SAY_HELLO {
+    container 'ubuntu:24.04'
+
     output:
     path 'greeting.txt'
 
