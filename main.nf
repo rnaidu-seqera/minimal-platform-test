@@ -14,9 +14,10 @@ process SAY_HELLO {
 }
 
 workflow {
-    log.info "workflow.sessionId    = ${workflow.sessionId}"
-    log.info "workflow.runName      = ${workflow.runName}"
-    log.info "TOWER_WORKFLOW_ID     = ${System.env.TOWER_WORKFLOW_ID ?: 'NOT SET (running locally?)'}"
+    log.info "workflow.sessionId             = ${workflow.sessionId}"
+    log.info "workflow.runName               = ${workflow.runName}"
+    log.info "TOWER_WORKFLOW_ID              = ${System.env.TOWER_WORKFLOW_ID ?: 'NOT SET (running locally?)'}"
+    log.info "workflow.platform.workflowId   = ${workflow.platform?.workflowId ?: 'NOT SET'}"
 
     SAY_HELLO()
 }
