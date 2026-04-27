@@ -2,6 +2,7 @@
 
 params.greeting = "Hello"
 params.name     = "World"
+params.count    = null
 
 process SAY_HELLO {
     debug true

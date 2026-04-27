@@ -18,6 +18,10 @@
                     "type": "string",
                     "default": "Universe",
                     "description": "Name to greet"
+                },
+                "count": {
+                    "type": "number",
+                    "description": "Optional numeric parameter — type a value then clear it to reproduce the FD-7479 schema validation warning"
                 }
             }
         }
