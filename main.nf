@@ -5,6 +5,7 @@ params.name     = "World"
 params.count    = null
 
 process SAY_HELLO {
+    container 'ubuntu:22.04'
     debug true
 
     input:
