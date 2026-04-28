@@ -5,6 +5,7 @@ params.call_min_reads = "1"
 include { validateParameters } from 'plugin/nf-schema'
 
 process SHOW_PARAM_TYPE {
+    container 'ubuntu:22.04'
     debug true
 
     script:
