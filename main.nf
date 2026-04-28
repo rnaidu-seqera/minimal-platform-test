@@ -1,21 +1,20 @@
 #!/usr/bin/env nextflow
 
-params.greeting = "Hello"
-params.name     = "World"
+params.call_min_reads = "1"
 
-process SAY_HELLO {
+include { validateParameters } from 'plugin/nf-schema'
+
+process SHOW_PARAM_TYPE {
     debug true
-
-    input:
-    val greeting
-    val name
 
     script:
     """
-    echo "${greeting}, ${name}!"
+    echo "call_min_reads value : '${params.call_min_reads}'"
+    echo "Groovy type          : ${params.call_min_reads.getClass().simpleName}"
     """
 }
 
 workflow {
-    SAY_HELLO(params.greeting, params.name)
+    validateParameters()
+    SHOW_PARAM_TYPE()
 }
