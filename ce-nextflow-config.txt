@@ -1,0 +1,19 @@
+// FD-7531 — CE-level nextflow.config
+//
+// Paste the contents of this file into the "Nextflow config file"
+// textarea on the Compute Environment used to run this pipeline.
+// (Seqera Platform → Compute Environments → <your CE> → Edit →
+//  "Nextflow config file")
+//
+// This sets defaults at the top-level `process` scope. The pipeline's
+// nextflow.config only declares a `withName: 'OVERRIDE_ME'` block, so
+// everything here should still apply to BASE_DEFAULTS, and most of it
+// should still apply to OVERRIDE_ME (except for the keys the selector
+// explicitly overrides).
+
+process {
+    cpus           = 1
+    scratch        = true
+    ext.from_ce    = 'yes'
+    ext.shared_key = 'from-CE'
+}
