@@ -88,13 +88,24 @@ included in the V4 signature — is cleaner but is exactly what the PR set out t
 
 Needs confirming that the IGV preview path always passes `preview=true` before proposing this.
 
-## 4. Housekeeping in rashmi-project-sandbox
+## 4. Release-note line for 26.1.5 — time-sensitive
+
+Most urgent item here, because release notes get finalised on a deadline the others don't have.
+
+After #11624, GCS buckets require a CORS policy exposing `Range` for Data Explorer IGV previews to
+work. Nobody loses functionality — GCS previews were broken (401) before the patch — but customers
+upgrading and expecting working previews will hit the misleading `Google oAuth has not been
+initalized` error (see item 1) with no obvious cause. Support will field these as "IGV is broken".
+
+One line in the 26.1.5 notes plus the EDU docs page (item 2) pre-empts that.
+
+## 5. Housekeeping in rashmi-project-sandbox
 
 - Bucket CORS on `rashmi-project-sandbox-batch-work` currently uses `"origin": ["*"]`. Tighten to
   `https://enterprise.stage-tower.net` or remove once IGV testing is done.
 - `gs://rashmi-project-sandbox-batch-work/igv-mre/.keep` placeholder can be deleted.
 - `roles/storage.legacyBucketReader` grant on that bucket is read-only metadata; harmless to leave.
 
-## 5. Open for PR #11324 sign-off
+## 6. Open for sign-off
 
 Build version of the instance under test was never recorded. Needed to anchor the verification.
