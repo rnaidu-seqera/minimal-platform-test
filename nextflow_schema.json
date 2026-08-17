@@ -1,25 +1,22 @@
 {
-    "$id": "https://raw.githubusercontent.com/minimal-platform-test/main/nextflow_schema.json",
-    "title": "minimal-platform-test pipeline parameters",
-    "description": "Minimal pipeline for Seqera Platform testing",
+    "title": "FD-7749 IGV reference genome signing MRE",
+    "description": "Generates a synthetic custom reference genome and IGV JSON configs that point at it",
     "type": "object",
     "definitions": {
         "main_options": {
             "title": "Main options",
             "type": "object",
-            "description": "Main pipeline parameters",
+            "description": "Where to publish the genome and IGV config fixtures",
             "properties": {
-                "greeting": {
+                "outdir": {
                     "type": "string",
-                    "default": "Hi",
-                    "description": "Greeting word"
-                },
-                "name": {
-                    "type": "string",
-                    "default": "Universe",
-                    "description": "Name to greet"
+                    "format": "directory-path",
+                    "default": "results",
+                    "description": "Output directory for the reference genome and IGV configs",
+                    "help_text": "Must be an absolute cloud path such as gs://my-bucket/pr3-mre. This value is written into the generated IGV config files as the reference genome's fastaURL and indexURL, so a relative path produces configs pointing at nothing. The bucket needs a Data Link and a CORS policy exposing Range."
                 }
-            }
+            },
+            "required": ["outdir"]
         }
     },
     "allOf": [
