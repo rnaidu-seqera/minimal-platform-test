@@ -1,167 +1,135 @@
-# MRE — PLAT-5421 / platform#11324: presign indexURLs independently
+# MRE — PLAT-5733 / platform#11624: GCS V4 signing for genomic files
 
-Tests `fix(ui): presign indexURLs independently` (label `enterprise/26.1.5`) on a Seqera Platform
-Enterprise instance using a GCP Batch compute environment.
+Tests `fix: sign GCS genomic file URLs with V4 for IGV preview` (label `enterprise/26.1.5`) on a
+Seqera Platform Enterprise instance with a GCP Batch compute environment. Follow-up to #11324.
 
-## What the PR actually changes
+## What the PR changes
 
-This is a **front-end fix**, not a Nextflow feature. Nothing about pipeline *execution* changes — the
-pipeline here exists only to put the right genomic fixtures into a GCS bucket so the viewer has
-something to render.
+A **backend** change, confined to `GoogleDataLinkClient.groovy`. No frontend change.
 
-**The bug.** When the IGV viewer previewed a genomic file, it built the index companion's URL by
-string-appending the index extension to the *data* file's presigned URL and **reusing that URL's
-query string** — i.e. the BAM's signature:
+igv.js decides whether a URL is signed by checking for `X-Goog-Signature` — a **V4** parameter.
+Platform previously signed all GCS URLs with **V2** (`GoogleAccessId`/`Expires`/`Signature`), so
+igv.js concluded the link was unsigned and rewrote it to the GCS **JSON API** endpoint
+(`storage.googleapis.com/storage/v1/b/<bucket>/o/<object>?…&alt=media`). That endpoint ignores
+query-string signatures and expects an OAuth bearer token, so the request was rejected as an
+anonymous caller — **401**, `Anonymous caller does not have storage.objects.get access`.
 
-```
-url      = https://storage.googleapis.com/bucket/sample.bam?X-Goog-Signature=SIG_FOR_BAM
-indexURL = https://storage.googleapis.com/bucket/sample.bam.bai?X-Goog-Signature=SIG_FOR_BAM   <-- invalid
-```
+The fix signs *genomic* files with V4. The URL then carries `X-Goog-Signature`, igv.js recognises it,
+skips the rewrite, and the request stays on the XML API where query-string signatures are honoured.
 
-A presigned cloud URL is cryptographically bound to a single object key, so the derived `.bai` URL is
-rejected by the storage backend. The failure is **lazy**: IGV only fetches the index once it needs a
-specific region, which is why you have to zoom in to see it.
+## The part worth testing hardest
 
-**The fix.** `partitionGenomicPath()` infers the sibling path, each URL is signed for its own key, and
-both are handed to `generateConfig({ url, indexURL, deriveIndex: false })` so the unsafe derivation is
-suppressed. When the index genuinely can't be signed (it doesn't exist), the track gets
-`indexed: false` so IGV doesn't error trying to load one.
+V4 signs the entire query string, and the pinned `google-cloud-storage:1.102.0` can't include the
+`response-content-*` params in a V4 signature. So the genomic branch does an early `return url`,
+**dropping `response-content-disposition` and `response-content-type` entirely**. Non-genomic files
+keep V2 with both params appended as before.
 
-**Two surfaces changed** — test both:
+`GENOMIC_FILE_SUFFIXES` includes plain-text formats — `.bed`, `.vcf`, `.gtf`, `.gff`, `.gff3`,
+`.wig`, `.bedgraph`, `.fasta`, `.fa`. Those used to download with `attachment; filename=…` and now
+carry no `Content-Disposition` at all. **Whether clicking Download still downloads them, rather than
+rendering them in a browser tab, is the untested consequence of this change** — and it isn't in the
+PR's own test plan.
 
-| Surface | File in PR |
-| --- | --- |
-| Data Explorer file preview dialog | `data-explorer-file-preview-dialog.component.ts` |
-| Run **Reports** tab (workflow outputs) | `workflow-launch-reports.component.ts` |
+Binary genomic files (`.bam`, `.cram`, `.bam.bai`) are unaffected in practice: browsers download
+`application/octet-stream` regardless of disposition.
 
-The Reports-tab path is *new* behavior: it previously only used the Tower `/content/redirect/…` path,
-and now resolves cloud-scheme paths against DataLinks and signs both companions, falling back to the
-Tower path when no DataLink covers the bucket.
+## Fixtures
 
-## Fixtures this pipeline produces
-
-Each one targets a distinct branch of the changed code. Coordinates are hg38-compatible (`chr1`) so
-the default genome lines up and reads render where you zoom.
-
-| File | Case exercised | Expected post-patch |
-| --- | --- | --- |
-| `sample.bam` + `sample.bam.bai` | data file with a real index | both signed independently; alignments render at max zoom |
-| `unindexed.bam` (no `.bai`) | index companion missing | track marked `indexed: false`; preview still opens, no error toast |
-| `variants.vcf.gz` + `.tbi` | a second indexed format | same independent signing |
-| `features.bed` | format with **no** known index | no `indexURL` and no `indexed` flag emitted |
+| File | Classified | Signature expected | Why it's here |
+| --- | --- | --- | --- |
+| `sample.bam` + `.bai` | genomic | **V4** | the original bug: index fetch on locus search |
+| `variants.vcf.gz` + `.tbi` | genomic | **V4** | second indexed format |
+| `variants.vcf` | genomic | **V4** | plain text on the V4 path → download check |
+| `features.bed` | genomic | **V4** | plain text on the V4 path → download check |
+| `annotations.gtf` | genomic | **V4** | plain text on the V4 path → download check |
+| `reference.fasta` | genomic | **V4** | plain text on the V4 path → download check |
+| `report.txt` | not genomic | **V2** | control: V2 path must be unchanged |
+| `data.csv` | not genomic | **V2** | control: inline preview via response-content-type |
+| `report.html` | not genomic | **V2** | control: inline rendering |
 
 ## Prerequisites
 
-1. GCP Batch compute environment configured in the workspace.
-2. The GCP credentials backing that CE can read/write the bucket you'll publish to.
-3. **A Data Link covering that bucket.** This is the part most likely to bite you on a clean
-   instance — the Reports-tab signing path requires `resolveUrls$` to match the `gs://` path against a
-   DataLink, and Data Explorer needs it to list the files at all. Platform auto-discovers buckets from
-   workspace credentials; confirm the bucket appears under **Data Explorer** before launching.
-4. **`storage.buckets.get` on the bucket.** `roles/storage.objectAdmin` — the usual grant for a Batch
-   work bucket — does *not* include it, so Batch jobs run fine while creating the Data Link fails with
-   `Insufficient permissions to access bucket`. Grant `roles/storage.legacyBucketReader` on the bucket,
-   or `roles/storage.bucketViewer` at the project level if you also want buckets to auto-discover
-   (that's the role carrying `storage.buckets.list`, and it holds only those two permissions).
-5. **A CORS policy on the bucket** — see below. Without it the whole test is unreadable.
+Same as #11324, and both are hard requirements:
 
-### GCS CORS is mandatory for this test
+1. **A Data Link covering the bucket**, and `storage.buckets.get` on it —
+   `roles/storage.objectAdmin` alone is not enough (use `roles/storage.legacyBucketReader` on the
+   bucket, or `roles/storage.bucketViewer` at project level for auto-discovery too).
+2. **A bucket CORS policy** allowing the Platform origin for `GET`/`HEAD` with `Range` exposed. This
+   PR makes CORS *newly load-bearing*: V2 previously masked its absence by routing through the
+   CORS-permissive JSON API. `gcs-cors.json` in this repo is a working starting point.
 
-IGV fetches the index and BAM chunks directly from `storage.googleapis.com` via cross-origin range
-requests. With no CORS policy the browser blocks them, and igv.js reports the misleading
-`Authorization is required, but Google oAuth has not been initalized` — nothing to do with OAuth.
+## How to read the signature version
 
-This matters beyond mere noise: **a CORS-blocked response hides its status code**, so a correctly
-signed 200 and a wrongly signed 403 are indistinguishable. That destroys the exact signal Step 3
-depends on. Configure CORS before drawing any conclusion about the fix.
+Don't guess from the truncated Network row. Click the file in Data Explorer, find the
+**`generate-download-url`** request, and read the `url` field in its **JSON response**:
+
+| Version | Query parameters present |
+| --- | --- |
+| **V4** | `X-Goog-Algorithm=GOOG4-RSA-SHA256`, `X-Goog-Credential`, `X-Goog-Date`, `X-Goog-Expires`, `X-Goog-SignedHeaders`, `X-Goog-Signature` |
+| **V2** | `GoogleAccessId`, `Expires`, `Signature` |
+
+The response body also shows whether `response-content-disposition` is present — which is the whole
+question for the download tests below.
+
+## Step 1 — Launch
+
+Revision `test/PLAT-5733-gcs-v4-signing`, your GCP Batch CE, `outdir` set to a `gs://` path in the
+Data-Linked bucket. Wait for all four tasks green.
+
+## Step 2 — Confirm V4 on genomic files
+
+Open `sample.bam`, search a locus (`chr1:999,900-1,001,200`) to force the index fetch.
+
+- ✅ `.bai` → **200**, `.bam` → **206**, URLs carry `X-Goog-Signature`, requests go to
+  `storage.googleapis.com/<bucket>/<object>` (XML API)
+- ❌ `.bai` → **401** `Anonymous caller…`, or URL rewritten to `/storage/v1/b/…&alt=media` → the V2
+  bug is still present
+
+Repeat for `variants.vcf.gz`.
+
+## Step 3 — Confirm V2 is retained for non-genomic files
+
+Open `report.txt`, `data.csv`, and `report.html`.
+
+- ✅ Each previews correctly, and `generate-download-url` returns a **V2** URL
+  (`GoogleAccessId`/`Signature`) **with** `response-content-disposition` present
+- ❌ A V4 URL here means the classification is over-broad and the download/inline-preview params
+  were dropped for ordinary files
+
+## Step 4 — The download regression check (the novel test)
+
+For each of `features.bed`, `variants.vcf`, `annotations.gtf`, `reference.fasta`, click **Download**
+and record what actually happens:
+
+- Does the file download, or open in a browser tab?
+- If it downloads, is the filename correct?
+- Confirm the signed URL has **no** `response-content-disposition`
+
+Then do the same for `report.txt` as a control — it should download with the correct filename via
+the V2 path.
+
+**There is no single "correct" answer to assert here.** The PR authors accepted dropping those params
+on the grounds that igv.js doesn't need them. This step establishes whether that trade-off also
+changed the *download* experience for text-based genomic files. If a `.bed` now opens in a tab
+instead of saving, that's a real UX regression worth reporting — not a blocker for the IGV fix, but
+worth a follow-up.
+
+The outcome depends on each object's stored `Content-Type`: with no `Content-Disposition`, an
+`application/octet-stream` object still downloads while a `text/plain` one renders inline. Check
+with:
 
 ```
-gcloud storage buckets update gs://<your-bucket> --cors-file=gcs-cors.json
+gcloud storage objects describe gs://<bucket>/<prefix>/features.bed --format="value(content_type)"
 ```
 
-`gcs-cors.json` in this repo uses `"origin": ["*"]`, which is fine for a sandbox bucket holding
-synthetic fixtures. Outside a sandbox, replace it with your Platform host, e.g.
-`"origin": ["https://platform.example.com"]`.
+## Step 5 — Sanity-check the untouched path
 
-`Range` must stay in `responseHeader` — IGV's indexed reads are range requests, and the preflight
-fails without it.
+Confirm downloads and image/text previews for non-genomic files still behave as before. This is the
+blast radius of the change: everything that isn't on the genomic suffix list should be bit-identical
+in behaviour to pre-patch.
 
-## Step 1 — Launch the run
+## Note on overlap with #11324
 
-1. Add this repo as a pipeline (or use **Launch → Start quick launch**).
-2. Set **Revision** to `test/PLAT-5421-igv-index-presign`.
-3. Select your **GCP Batch** compute environment.
-4. Set **outdir** to a `gs://` path in the bucket from the prerequisites, e.g.
-   `gs://<your-bucket>/igv-mre`. **Do not leave it as `results`** — a relative path publishes inside
-   the work directory and may not be covered by a Data Link.
-5. Launch. Four short tasks; expect a couple of minutes, mostly image pull.
-
-Confirm all four tasks succeeded before interpreting anything below — the process bodies assert their
-own outputs (`samtools quickcheck`, `test -s …`), so a green run means the fixtures are valid and
-`unindexed.bam` really has no index.
-
-## Step 2 — Verify in Data Explorer (primary surface)
-
-This mirrors the PR's own test plan.
-
-1. **Data Explorer** → your bucket → `igv-mre/`.
-2. Click `sample.bam` to open the preview dialog. The IGV viewer should render.
-3. **Zoom in to trigger the indexed read.** Type `chr1:999,900-1,001,200` into the locus box and press
-   enter (or click the chromosome ideogram and use the zoom bar top-right). The 200 reads should appear
-   as a stacked pileup.
-   - ✅ **Fixed:** reads render, no error toast, no red banner in the track.
-   - ❌ **Pre-patch:** the track errors when the index fetch is attempted — typically an error toast
-     and/or an empty track, because the `.bai` request is rejected.
-4. **Open the index directly.** Go back and click `sample.bam.bai`. The fix swaps the pair, so the
-   viewer should render **the BAM**, not attempt to display the index as a data file. Zoom in again.
-5. **Missing-index case.** Open `unindexed.bam`. The preview should open and render *something* without
-   an error — the track is marked unindexed rather than trying to load a nonexistent `.bai`. This is
-   the case that most clearly separates fixed from broken: pre-patch this errored, post-patch it
-   degrades gracefully.
-6. **Second format.** Open `variants.vcf.gz`, zoom to the same locus; the 40 variants should render.
-7. **No-index format.** Open `features.bed`; the 10 features should render with no index involvement.
-
-## Step 3 — The decisive check (browser devtools)
-
-The UI signals above are suggestive; this one is objective. Before opening a preview, open devtools →
-**Network**.
-
-1. Open `sample.bam` and zoom in as above.
-2. Find the two requests to `storage.googleapis.com` (or your signed-URL host) — one for `sample.bam`,
-   one for `sample.bam.bai`.
-3. **Compare their query strings.**
-   - ✅ **Fixed:** the two URLs have **different** `X-Goog-Signature` values — each was signed for its
-     own object key. The `.bai` request returns **200**.
-   - ❌ **Pre-patch:** the signatures are **byte-identical** and the `.bai` request returns **403**
-     with a `SignatureDoesNotMatch` XML body.
-4. You should also see the signing roundtrip itself request **both** paths (`…/sample.bam` and
-   `…/sample.bam.bai`) rather than just the one the user clicked.
-
-Identical signatures on the two URLs means you are running unpatched code, regardless of whether the
-track happened to render.
-
-## Step 4 — Verify in the Reports tab (second surface)
-
-1. Open the completed run → **Reports** tab.
-2. The four fixtures should be listed with their display names.
-3. Click each and repeat the zoom check from Step 2, plus the signature comparison from Step 3.
-
-Two caveats here, in order of likelihood:
-
-- **If a fixture is missing from the tab**, the report path glob didn't match. Report paths resolve
-  relative to the launch directory, so the `**/…` globs in `nextflow.config` are deliberately loose,
-  but they may still need adjusting for your work-directory layout. This is a limitation of my glob
-  guess, not evidence about the PR.
-- **If the URLs are Tower `/content/redirect/…` paths instead of signed `storage.googleapis.com`
-  URLs**, you've hit the intentional fallback — it means no DataLink covered the `gs://` path, so the
-  new signing code never ran. Fix the Data Link (see Prerequisites) and re-check, otherwise this
-  surface tells you nothing about the fix.
-
-## Notes
-
-- Fixtures are synthetic and tiny (200 reads, 40 variants, 10 features) — enough to be visibly
-  present at the target locus, small enough that the run is nearly free.
-- `unindexed.bam` asserts `test ! -e unindexed.bam.bai` so an accidental index can't silently void
-  that test case.
-- Because this is a UI fix, a green pipeline run proves nothing on its own. All the signal is in
-  Steps 2–4.
+Verifying #11324 on this instance already produced V4 evidence — `X-Goog-Algorithm`/`X-Goog-Signature`
+on the XML API endpoint with 200/206 responses. That is this PR's fix working. Step 2 re-confirms it
+deliberately; Steps 3–5 are the parts that verification did **not** cover.
