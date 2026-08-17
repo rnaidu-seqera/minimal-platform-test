@@ -58,6 +58,33 @@ the default genome lines up and reads render where you zoom.
    instance — the Reports-tab signing path requires `resolveUrls$` to match the `gs://` path against a
    DataLink, and Data Explorer needs it to list the files at all. Platform auto-discovers buckets from
    workspace credentials; confirm the bucket appears under **Data Explorer** before launching.
+4. **`storage.buckets.get` on the bucket.** `roles/storage.objectAdmin` — the usual grant for a Batch
+   work bucket — does *not* include it, so Batch jobs run fine while creating the Data Link fails with
+   `Insufficient permissions to access bucket`. Grant `roles/storage.legacyBucketReader` on the bucket,
+   or `roles/storage.bucketViewer` at the project level if you also want buckets to auto-discover
+   (that's the role carrying `storage.buckets.list`, and it holds only those two permissions).
+5. **A CORS policy on the bucket** — see below. Without it the whole test is unreadable.
+
+### GCS CORS is mandatory for this test
+
+IGV fetches the index and BAM chunks directly from `storage.googleapis.com` via cross-origin range
+requests. With no CORS policy the browser blocks them, and igv.js reports the misleading
+`Authorization is required, but Google oAuth has not been initalized` — nothing to do with OAuth.
+
+This matters beyond mere noise: **a CORS-blocked response hides its status code**, so a correctly
+signed 200 and a wrongly signed 403 are indistinguishable. That destroys the exact signal Step 3
+depends on. Configure CORS before drawing any conclusion about the fix.
+
+```
+gcloud storage buckets update gs://<your-bucket> --cors-file=gcs-cors.json
+```
+
+`gcs-cors.json` in this repo uses `"origin": ["*"]`, which is fine for a sandbox bucket holding
+synthetic fixtures. Outside a sandbox, replace it with your Platform host, e.g.
+`"origin": ["https://platform.example.com"]`.
+
+`Range` must stay in `responseHeader` — IGV's indexed reads are range requests, and the preflight
+fails without it.
 
 ## Step 1 — Launch the run
 
