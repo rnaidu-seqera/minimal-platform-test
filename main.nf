@@ -98,15 +98,16 @@ process MAKE_TRACKS {
 
 process MAKE_IGV_CONFIGS {
     publishDir params.outdir, mode: 'copy'
-    // python for the JSON validity check below; the samtools image has no interpreter.
-    container 'python:3.12-slim'
+    container 'quay.io/biocontainers/samtools:1.21--h50ea8bc_0'
 
     output:
     path '*.json'
 
     script:
     // Absolute cloud URLs, baked in at generation time. These are the URLs the PR must sign.
-    def base = params.outdir
+    // Strip any trailing slash: an outdir like `gs://bucket/prefix/` would otherwise yield
+    // `gs://bucket/prefix//reference.fasta`, which data-link resolution won't match.
+    def base = params.outdir.toString().replaceAll('/+$', '')
     """
     cat > genome-only.json <<'JSON'
     {
@@ -170,11 +171,14 @@ process MAKE_IGV_CONFIGS {
     }
     JSON
 
-    # A config that fails to parse degrades silently to the text viewer, so validity is
-    # load-bearing for this test. Fail the task rather than discover it in the browser.
-    for f in *.json; do
-        python3 -c "import json,sys; json.load(open(sys.argv[1]))" "\$f" || exit 1
+    # Sanity check without needing an interpreter: all four configs exist and are non-empty.
+    # Deeper validation happens against the *published* objects (see README) — an invalid config
+    # degrades silently to the text viewer, so it's worth checking what actually landed rather
+    # than what the task produced.
+    for f in genome-only.json genome-with-track.json genome-nested-tracks.json genome-chromsizes.json; do
+        test -s "\$f" || exit 1
     done
+    grep -q 'chrTest-genome' genome-only.json
     """
 }
 

@@ -55,8 +55,16 @@ The IGV view mode is simply never offered, with no error shown. The originating 
 this — their genome JSON had an unquoted key and a trailing comma.
 
 So if a config opens as plain text with no IGV option, that is *not* this bug. It means the JSON was
-rejected. The pipeline validates every config with `json.load` before publishing, so a green run rules
-this out — but keep it in mind if you hand-edit any config.
+rejected. Validate the published configs before reading anything into the UI:
+
+```
+for f in genome-only genome-with-track genome-nested-tracks genome-chromsizes; do
+  gcloud storage cat gs://<bucket>/<prefix>/$f.json | python3 -c "import json,sys; json.load(sys.stdin); print('$f valid')"
+done
+```
+
+That also lets you eyeball the baked-in `fastaURL` values, which is the other thing that can silently
+invalidate the test — see below.
 
 ---
 
@@ -68,7 +76,18 @@ Revision `test/FD-7749-igv-reference-signing`, GCP Batch CE, and **`outdir` set 
 `gs://` path** — e.g. `gs://rashmi-project-sandbox-batch-work/pr3-mre`.
 
 `outdir` is baked into the config files as the reference genome's URLs, so a relative path yields
-configs that point nowhere. Wait for all three tasks green.
+configs that point nowhere. A trailing slash is stripped automatically — an earlier version of this
+pipeline produced `pr3-mre//reference.fasta`, which data-link resolution won't match.
+
+Wait for all three tasks green, then verify the published configs carry the URLs you expect:
+
+```
+gcloud storage cat gs://<bucket>/<prefix>/genome-only.json
+```
+
+The `fastaURL` should read `gs://<bucket>/<prefix>/reference.fasta` with single slashes throughout.
+This matters more than it looks: a config with dead URLs is still *valid JSON* and still opens in IGV,
+so the resulting failure is indistinguishable from the bug you're testing for.
 
 ## Step 2: open the reference-only config
 
