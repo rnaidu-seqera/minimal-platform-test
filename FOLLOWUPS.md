@@ -49,13 +49,52 @@ carries `storage.buckets.list` and holds only those two permissions).
 example per provider and call out the `Range` header; the GCS permissions section lists
 `storage.buckets.get` as required for Data Links.
 
-## 3. Housekeeping in rashmi-project-sandbox
+## 3. NEW FINDING — platform#11624 breaks Download for text-based genomic files
+
+Found 2026-08-17 while verifying #11624 on GCP. **The PR's own fix works**; this is a side effect of
+it, not a reason to hold the patch.
+
+`buildPresignedUrl` returns early for genomic files, dropping `response-content-disposition`.
+`GENOMIC_FILE_SUFFIXES` includes plain-text formats — `.bed`, `.vcf`, `.gtf`, `.gff`, `.gff3`,
+`.wig`, `.bedgraph`, `.fasta`, `.fa` — so clicking **Download** on any of these serves the object
+with no `Content-Disposition`. When the object has a text `Content-Type`, the browser renders it in
+a tab instead of saving it.
+
+**Controlled reproduction.** Two objects, both `Content-Type: text/plain`, differing only in signing
+path:
+
+| Object | Path | `Content-Disposition` | Download result |
+| --- | --- | --- | --- |
+| `features-typed.bed` | genomic → V4 | absent | opens in a new tab |
+| `report-typed.txt` | non-genomic → V2 | `attachment; filename=…` | saves to disk |
+
+Both live at `gs://rashmi-project-sandbox-batch-work/v4-mre/`.
+
+**Not affected:** binary genomic formats (`.bam`, `.cram`, `.bai`, `.tbi`, `.bigwig`, `.2bit`) — they
+download regardless because browsers save `application/octet-stream`. Also not reproducible on objects
+with no `Content-Type` set at all, which is why the pipeline-published fixtures didn't reveal it; GCS
+defaults those to `application/octet-stream`. Customer buckets populated via the console or `gsutil`
+**do** get text content types by extension, so this is reachable in practice.
+
+**Severity:** moderate UX regression, no data loss or security impact. Workaround is right-click →
+Save As.
+
+**Suggested fix — gate V4 on the preview path only.** `buildPresignedUrl` already takes a `preview`
+flag. igv.js only needs V4 when *previewing*; the Download button doesn't involve igv.js at all. So
+`isGenomicFile(uri) && preview` → V4 without params, everything else → V2 with params appended.
+Fixes the regression with no dependency bump. The alternative — upgrading
+`google-cloud-storage` to 2.x for `withQueryParams` so the `response-content-*` params can be
+included in the V4 signature — is cleaner but is exactly what the PR set out to avoid.
+
+Needs confirming that the IGV preview path always passes `preview=true` before proposing this.
+
+## 4. Housekeeping in rashmi-project-sandbox
 
 - Bucket CORS on `rashmi-project-sandbox-batch-work` currently uses `"origin": ["*"]`. Tighten to
   `https://enterprise.stage-tower.net` or remove once IGV testing is done.
 - `gs://rashmi-project-sandbox-batch-work/igv-mre/.keep` placeholder can be deleted.
 - `roles/storage.legacyBucketReader` grant on that bucket is read-only metadata; harmless to leave.
 
-## 4. Open for PR #11324 sign-off
+## 5. Open for PR #11324 sign-off
 
 Build version of the instance under test was never recorded. Needed to anchor the verification.
