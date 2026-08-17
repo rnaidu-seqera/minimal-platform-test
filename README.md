@@ -199,28 +199,54 @@ for f in reference.fasta reference.fasta.fai chrTest.chrom.sizes sample.bam samp
 done
 ```
 
-`gcloud storage sign-url` needs a service-account key; if your user credentials can't sign, use
-`--impersonate-service-account` or download and upload with
-`az storage blob upload-batch --destination igv-test --source <local-dir>` instead.
+In practice `gcloud storage sign-url` needs a service-account key, and user credentials without
+`roles/iam.serviceAccountTokenCreator` can't sign at all — which was the case here. The fixtures total
+13 KB, so a local round-trip is simpler and was what actually worked:
+
+```
+gcloud storage cp "$GCS/*" /tmp/azfix/
+az storage blob upload-batch --destination igv-test --source /tmp/azfix \
+  --account-name $ACCT --account-key "$KEY" --overwrite
+```
+
+`upload-batch` guesses content types from extensions, which is what you want for the `.json` configs.
 
 ## Step E: rewrite the configs for Azure
 
 The configs must reference `az://` paths, so they can't be copied — regenerate them:
 
+**The URI form is `az://<account_name>.<container_name>/<path>`** — account and container joined by a
+dot. Not `az://<container>`, and not the blob endpoint host; both are rejected by the DataLink
+validator. Verified against a live instance.
+
 ```
-sed 's#gs://rashmi-project-sandbox-batch-work/pr3-mre#az://igv-test#g' \
+sed 's#gs://rashmi-project-sandbox-batch-work/pr3-mre#az://seqeraigvreftest01.igv-test#g' \
   genome-only.json > genome-only.azure.json
 ```
 
-...for each of the four, then upload. Or re-run the pipeline with
-`outdir = az://igv-test/...` if you'd rather have Nextflow generate them — but that needs Azure
-credentials in the run, which the copy approach avoids.
+...for each of the four, then upload with
+`az storage blob upload --content-type application/json` — Platform only offers the IGV view mode when
+the blob's content type marks it as JSON.
 
 ## Step F: Platform setup
 
-1. **Credentials** → Add → **Azure** → storage account name `$ACCT` and access key `$KEY`.
-2. **Data Explorer** → Add data repository → **Azure** → `az://igv-test` → those credentials.
-3. Click into it and confirm the six objects list. Same gate as GCS: a link that exists but can't list
+1. **Credentials** → Add → **Azure** → credential type **Shared key**. Note this form requires **four**
+   fields, all mandatory: Batch account name/key *and* Blob Storage account name/key. Platform reuses
+   one Azure credential type for compute and storage, so a storage-only test still needs Batch
+   credentials. Create a throwaway Batch account for this — it's free unless you start nodes:
+
+   ```
+   az batch account create --name <name> --resource-group $RG --location <region>
+   az batch account keys list --name <name> --resource-group $RG --query primary -o tsv
+   ```
+
+   Batch account quota is **per region** and shared sandboxes are often exhausted; if you hit
+   `SubscriptionQuotaExceeded`, try another region. The Batch account need not be co-located with the
+   storage account, since nothing runs on it.
+
+2. **Data Explorer** → Add data repository → **Azure** → `az://<account>.<container>` → those
+   credentials. Select the provider radio button *first*; it gates the path field.
+3. Click into it and confirm all ten objects list. Same gate as GCS: a link that exists but can't list
    will fail at preview time and mimic the bug.
 
 ## Step G: repeat Steps 2–5

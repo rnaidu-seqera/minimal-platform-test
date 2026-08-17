@@ -70,6 +70,10 @@ path:
 
 Both live at `gs://rashmi-project-sandbox-batch-work/v4-mre/`.
 
+**GCS-only.** Confirmed 2026-08-17 on Azure Blob: every URL in a `sign-urls` batch comes back with a
+SAS token carrying `rscd=inline; filename=…` and `rsct=…`. Azure signs content-disposition and
+content-type *as part of* the SAS, so the constraint that forced GCS to drop them doesn't exist there.
+
 **Not affected:** binary genomic formats (`.bam`, `.cram`, `.bai`, `.tbi`, `.bigwig`, `.2bit`) — they
 download regardless because browsers save `application/octet-stream`. Also not reproducible on objects
 with no `Content-Type` set at all, which is why the pipeline-published fixtures didn't reveal it; GCS
@@ -115,6 +119,10 @@ Field-by-field, cross-referencing `REFERENCE_URL_FIELDS` against `GENOMIC_FILE_S
 | `cytobandURL` | `.txt` | **V2** — inferred |
 | `aliasURL` | `.txt` / `.tab` | **V2** — inferred |
 | `compressedIndexURL` | `.gzi` | **V2** — inferred |
+
+**GCS-only.** Confirmed 2026-08-17 on Azure Blob: all three URLs in the equivalent `sign-urls` batch
+came back uniformly SAS-signed. Azure has no genomic-vs-other classification, so the FD-7749 customer
+— who is on Azure — is not exposed to this.
 
 **Not yet observed as a 401**, because igv.js appears not to fetch `chromSizesURL` when the `.fai`
 already supplies the contig list. `cytobandURL` is the case to confirm end-to-end: igv.js *does* fetch
