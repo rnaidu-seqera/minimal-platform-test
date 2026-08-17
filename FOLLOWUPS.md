@@ -88,6 +88,45 @@ included in the V4 signature — is cleaner but is exactly what the PR set out t
 
 Needs confirming that the IGV preview path always passes `preview=true` before proposing this.
 
+## 3b. NEW FINDING — #11971 and #11624 disagree on which reference files are "genomic"
+
+Found 2026-08-17 verifying #11971 on GCP. Visible only because both PRs were tested together.
+
+#11971 correctly collects and signs `REFERENCE_URL_FIELDS`. #11624 decides V4-vs-V2 from
+`GENOMIC_FILE_SUFFIXES`, which does **not** cover every extension those fields use. Observed in a
+single `sign-urls` response for `genome-chromsizes.json`:
+
+| URL | Signature |
+| --- | --- |
+| `reference.fasta` | V4 (`X-Goog-Algorithm=GOOG4-RSA-SHA256`) |
+| `reference.fasta.fai` | V4 |
+| `chrTest.chrom.sizes` | **V2** (`GoogleAccessId`/`Expires`/`Signature`) |
+
+Per #11624's own analysis, a V2 URL is what igv.js treats as *unsigned* — it rewrites to the GCS JSON
+API endpoint, which ignores query-string signatures, and the request 401s as an anonymous caller. So a
+reference field can now be signed correctly and still fail in the viewer.
+
+Field-by-field, cross-referencing `REFERENCE_URL_FIELDS` against `GENOMIC_FILE_SUFFIXES`:
+
+| Field | Typical extension | Signature |
+| --- | --- | --- |
+| `fastaURL`, `indexURL`, `twoBitURL` | `.fasta` / `.fai` / `.2bit` | V4 — fine |
+| `chromSizesURL` | `.sizes` | **V2** — confirmed observed |
+| `cytobandURL` | `.txt` | **V2** — inferred |
+| `aliasURL` | `.txt` / `.tab` | **V2** — inferred |
+| `compressedIndexURL` | `.gzi` | **V2** — inferred |
+
+**Not yet observed as a 401**, because igv.js appears not to fetch `chromSizesURL` when the `.fai`
+already supplies the contig list. `cytobandURL` is the case to confirm end-to-end: igv.js *does* fetch
+it to draw the ideogram, so a `.txt` cytoband in a private bucket should reproduce the 401. Fixture
+not yet built.
+
+**Suggested fix:** decide the signature version from *how the URL will be consumed*, not from the
+filename. Any URL going into an IGV config is fetched by igv.js and needs V4, whatever its extension.
+Extending `GENOMIC_FILE_SUFFIXES` with `.sizes`/`.txt`/`.tab`/`.gzi` would work for these cases but
+stays fragile — `.txt` in particular is far too broad to classify as genomic, and would drag ordinary
+text files onto the V4 path (losing their download disposition, see item 3).
+
 ## 4. Release-note line for 26.1.5 — time-sensitive
 
 Most urgent item here, because release notes get finalised on a deadline the others don't have.
