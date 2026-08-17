@@ -1,25 +1,22 @@
 {
-    "$id": "https://raw.githubusercontent.com/minimal-platform-test/main/nextflow_schema.json",
-    "title": "minimal-platform-test pipeline parameters",
-    "description": "Minimal pipeline for Seqera Platform testing",
+    "title": "PLAT-5421 IGV index presigning MRE",
+    "description": "Generates indexed and unindexed genomic fixtures for testing the IGV viewer",
     "type": "object",
     "definitions": {
         "main_options": {
             "title": "Main options",
             "type": "object",
-            "description": "Main pipeline parameters",
+            "description": "Where to publish the genomic fixtures",
             "properties": {
-                "greeting": {
+                "outdir": {
                     "type": "string",
-                    "default": "Hi",
-                    "description": "Greeting word"
-                },
-                "name": {
-                    "type": "string",
-                    "default": "Universe",
-                    "description": "Name to greet"
+                    "format": "directory-path",
+                    "default": "results",
+                    "description": "Output directory for the generated fixtures",
+                    "help_text": "Set this to a gs:// path inside a bucket covered by your GCP credentials, e.g. gs://my-bucket/igv-mre. The fixtures must live somewhere Data Explorer can list them for this test to be meaningful."
                 }
-            }
+            },
+            "required": ["outdir"]
         }
     },
     "allOf": [
